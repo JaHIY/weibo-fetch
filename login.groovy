@@ -88,7 +88,7 @@ class HomePage extends Page {
         def process = { before, after ->
             def it = before.remove(0)
 
-            if (! (it instanceof groovy.util.node)) {
+            if (! (it instanceof groovy.util.Node)) {
                 after << it
                 return [before, after]
             }
