@@ -95,7 +95,7 @@ class HomePage extends Page {
 
             def attrs = it.attributes()
 
-            switch (it.name().localpart) {
+            switch (it.name().localPart) {
                 case 'img':
                     after << attrs['title']
                     return [before, after]
