@@ -1,3 +1,5 @@
+#!/usr/bin/env groovy
+
 @Grapes(
     [
         @Grab('org.gebish:geb-core'),
@@ -43,6 +45,7 @@ class LoginPage extends Page {
         this.switchToLoginForm()
 
         if (verifyCodeBox.displayed) {
+            println 'throw new NeedValidationException() 1'
             throw new NeedValidationException()
         }
 
@@ -51,6 +54,7 @@ class LoginPage extends Page {
         loginButton.click()
 
         if (browser.isAt(this.class)) {
+            println 'throw new NeedValidationException() 2'
             throw new NeedValidationException()
         }
     }
@@ -97,7 +101,9 @@ class HomePage extends Page {
 
             switch (it.name().localPart) {
                 case 'img':
-                    after << attrs['title']
+                    if (attrs['title']) {
+                        after << attrs['title']
+                    }
                     return [before, after]
                 case 'a':
                     switch (attrs['action-type']) {
@@ -110,6 +116,9 @@ class HomePage extends Page {
                         default:
                             return [it.children() + before,after]
                     }
+                case 'br':
+                    after << '\n'
+                    return [before, after]
                 default:
                     return [it.children() + before,after]
             }
@@ -133,6 +142,22 @@ class HomePage extends Page {
         this.scrollToBottom()
 
         def feedItems = feedList.find('div.WB_cardwrap', 'action-type': 'feed_list_item')
+
+        def processMapForUrl = [
+            widget_photoview: {
+                return [
+                    url: it.@alt,
+                    type: 'image',
+                ]
+            },
+            feed_list_url: {
+                return [
+                    title: it.@title,
+                    url: it.@href,
+                    type: 'page',
+                ]
+            },
+        ]
 
         feedItems.collect { feedItem ->
             def result = { [:].withDefault { owner.call() } }()
@@ -173,6 +198,7 @@ class HomePage extends Page {
             def publishedTime = feedContent.find('a', 0, 'node-type': 'feed_list_item_date')
             if (publishedTime) {
                 result['publishedTime'] = new Date(publishedTime.@date as long)
+                result['detailsUrl'] = publishedTime.@href
             }
 
             def source = feedContent.find('a', 0, 'action-type': 'app_source')
@@ -187,20 +213,19 @@ class HomePage extends Page {
 
                 def urlInContent = content.find('a[action-type]')
                 if (urlInContent) {
-                    result['content']['link'] = urlInContent.collect {
-                        switch (it.@'action-type') {
-                            case 'widget_photoview':
-                                return [
-                                    url: it.@alt,
-                                    type: 'image',
-                                ]
-                            case 'feed_list_url':
-                                return [
-                                    title: it.@title,
-                                    url: it.@href,
-                                    type: 'page',
-                                ]
+
+                    def urlInfoList = []
+                    for (item in urlInContent) {
+
+                        if (!processMapForUrl[item.@'action-type']) {
+                            continue
                         }
+
+                        urlInfoList << processMapForUrl[item.@'action-type'](item)
+                    }
+
+                    if (urlInfoList.size()) {
+                        result['content']['link'] = urlInfoList
                     }
                 }
 
@@ -244,20 +269,19 @@ class HomePage extends Page {
 
                     def urlInForwardContent = forwardContent.find('a[action-type]')
                     if (urlInForwardContent) {
-                        result['forward']['content']['link'] = urlInForwardContent.collect {
-                            switch (it.@'action-type') {
-                                case 'widget_photoview':
-                                    return [
-                                        url: it.@alt,
-                                        type: 'image',
-                                    ]
-                                case 'feed_list_url':
-                                    return [
-                                        title: it.@title,
-                                        url: it.@href,
-                                        type: 'page',
-                                    ]
+
+                        def urlInfoList = []
+                        for (item in urlInForwardContent) {
+
+                            if (!processMapForUrl[item.@'action-type']) {
+                                continue
                             }
+
+                            urlInfoList << processMapForUrl[item.@'action-type'](item)
+                        }
+
+                        if (urlInfoList.size()) {
+                            result['forward']['content']['link'] = urlInfoList
                         }
                     }
 
@@ -284,10 +308,15 @@ class HomePage extends Page {
                     }
                 }
 
-                def forwardPublishedTime = forward.find('a', 0, 'node-type': 'feed_list_item_date')
+                def forwardPublishedTime = forwardContent.find('a', 0, 'node-type': 'feed_list_item_date')
                 if (forwardPublishedTime) {
                     result['forward']['publishedTime'] = new Date(forwardPublishedTime.@date as long)
-                    result['forward']['source'] = forwardPublishedTime.next().text()
+                    result['forward']['detailsUrl'] = forwardPublishedTime.@href
+                }
+
+                def forwardSource = forwardContent.find('a', 0, 'action-type': 'app_source')
+                if (source) {
+                    result['forward']['source'] = forwardSource.text()
                 }
 
                 def forwardHandleBar = forward.find('.WB_handle', 0)
